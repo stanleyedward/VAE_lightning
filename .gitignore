@@ -1,2 +1,2 @@
-results/
-lightning_logs/
+results/*.png
+lightning_logs/*
