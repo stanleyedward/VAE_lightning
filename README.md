@@ -22,3 +22,7 @@ optional arguments:
   --mps         enables GPU on macOS
   --seed		random seed (default: 1)
   --log-interval	how many batches to wait before logging training status
+
+reference:
+for the training step
+- https://lightning.ai/docs/pytorch/stable/common/lightning_module.html
