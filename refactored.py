@@ -1,10 +1,11 @@
 from typing import Any
-from pytorch_lightning.utilities.types import STEP_OUTPUT
+from pytorch_lightning.utilities.types import EVAL_DATALOADERS, STEP_OUTPUT, TRAIN_DATALOADERS, OptimizerLRScheduler
 import torch
 import torch.nn.functional as F 
 from torch import nn 
 import pytorch_lightning as pl
 from torchvision import datasets, transforms
+from torchvision.utils import save_image
 
 #VAE architecture
 class VAE(pl.LightningModule):
@@ -49,16 +50,51 @@ class VAE(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         #data = data.to(device) #lightning manages devices directly 
         #optimizer.zero_grad() #lightning updates optimizers directly 
-        recon_batch, mu, logvar = self(batch)
-        loss = self.loss_function(recon_batch, batch, mu, logvar)
+        x, _ = batch #will error if you dont split
+        recon_batch, mu, logvar = self(x)
+        loss = self.loss_function(recon_batch, x, mu, logvar)
         #loss.backward() #lightning automates the backward prop as well
         #train_loss += loss.item() #lightning also aggregates the loss automatically like this
         #optimizer.step() #lightning updates optimizers directly 
         
         return {'loss': loss}
-    
 
+    def validation_step(self, batch, batch_idx):
+
+        x, _ = batch
+        # data = data.to(device)
+        recon_batch, mu, logvar = self(x)
+        val_loss = self.loss_function(recon_batch, x, mu, logvar).item()
+            
+        if batch_idx == 0:
+            n = min(x.size(0), 8)
+            comparison = torch.cat([x[:n],
+                                    recon_batch.view(args.batch_size, 1, 28, 28)[:n]])
+            path = 'results/reconstruction_' + str(self.current_epoch) + '.png'
+            save_image(comparison.cpu(), path, nrow=n)
+
+        return {'val_loss': val_loss}
+    
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=1e-3)
+    
+    def train_dataloader(self):
         
+        train_loader = torch.utils.data.DataLoader(
+        datasets.MNIST('../data', train=True, download=True,
+                   transform=transforms.ToTensor()),
+        # batch_size=args.batch_size, shuffle=True, **kwargs)
+        batch_size=args.batch_size, shuffle=True) #removed kwargs since we dont need it anymore after putting train_dataloader inside the model class
+        return train_loader
+    
+    def val_dataloader(self):
+
+        val_loader = torch.utils.data.DataLoader(
+            datasets.MNIST('../data', train=False, transform=transforms.ToTensor()),
+            # batch_size=args.batch_size, shuffle=False, **kwargs)
+            batch_size=args.batch_size, shuffle=False)#removed kwargs since we dont need it anymore after putting val_dataloader inside the model class
+        return val_loader
+    
 if __name__ == '__main__':
     from argparse import ArgumentParser
     
@@ -69,15 +105,16 @@ if __name__ == '__main__':
     
     kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
     
-    train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('../data', train=True, download=True,
-                   transform=transforms.ToTensor()),
-        batch_size=args.batch_size, shuffle=True, **kwargs)
+
+    
     
     vae = VAE()
     #print(vae(torch.rand(4,784)))
     trainer = pl.Trainer(fast_dev_run=True)# runs a single batch through training and testing loop to check for errors, basically compiliing your code 
-    trainer.fit(vae, train_dataloaders=train_loader) #will give errors if we havent defined any training step and dataloader
+    # trainer = pl.Trainer()
+    # trainer = pl.Trainer(limit_train_batches=0.1)#if we wanna train on 10% data without seeing how the reconstruction looks like 
+    # trainer.fit(vae, train_dataloaders=train_loader, val_dataloaders=val_loader) #will give errors if we havent defined any training step and dataloader
+    trainer.fit(vae) #since we added the train_dataloader and test_dataloader function inside the model we dont need to specify
 
 
 
