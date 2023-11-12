@@ -1,2 +1,6 @@
 results/*.png
-lightning_logs/*
+lightning_logs/version_*
+# results/hi.text
+# lightning_logs/*
+# !results/ .gitkeep
+# !lightning_logs/ .gitkeep
