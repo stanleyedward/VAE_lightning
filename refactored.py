@@ -7,6 +7,7 @@ import pytorch_lightning as pl
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
 import torchvision
+from pytorch_lightning import loggers 
 #VAE architecture
 class VAE(pl.LightningModule):
     def __init__(self):
@@ -17,6 +18,9 @@ class VAE(pl.LightningModule):
         self.fc22 = nn.Linear(400, 20)
         self.fc3 = nn.Linear(20, 400)
         self.fc4 = nn.Linear(400, 784)
+        
+        self.validation_step_outputs = []
+        self.x_hat_step_outputs = []
 
     def encode(self, x):
         h1 = F.relu(self.fc1(x))
@@ -62,7 +66,7 @@ class VAE(pl.LightningModule):
         #loss.backward() #lightning automates the backward prop as well
         #train_loss += loss.item() #lightning also aggregates the loss automatically like this
         #optimizer.step() #lightning updates optimizers directly 
-        
+        log = {'train_loss': loss}
         return {'loss': loss}
 
     def validation_step(self, batch, batch_idx):
@@ -78,7 +82,9 @@ class VAE(pl.LightningModule):
         z = self.reparameterize(mu, logvar)
         x_hat = self(z)
         val_loss = self.loss_function(x_hat, x, mu, logvar)
-            
+        self.validation_step_outputs.append(val_loss)
+        self.x_hat_step_outputs = x_hat
+        
         # if batch_idx == 0:
         #     n = min(x.size(0), 8)
         #     comparison = torch.cat([x[:n],
@@ -87,20 +93,20 @@ class VAE(pl.LightningModule):
         #     save_image(comparison.cpu(), path, nrow=n)
         
         #deleted since we are using logger below!
-
+  
         return {'val_loss': val_loss, 
                 'x_hat': x_hat}
     
-    def on_validation_epoch_end(self, outputs): #for logging the end of every epoch and not only batch
+    def on_validation_epoch_end(self): #for logging the end of every epoch and not only batch
         
-        val_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-        x_hat = outputs[-1]['x_hat']
-   
+        val_loss = torch.stack(self.validation_step_outputs).mean()
+        x_hat = self.x_hat_step_outputs
+
         grid = torchvision.utils.make_grid(x_hat)
         self.logger.experiment.add_image('images', grid, 0)
-        
+
         log = {'avg_val_loss': val_loss}
-        return {'log': log}
+        return {'log': log, 'val_loss': val_loss}
 
     
     def configure_optimizers(self):
