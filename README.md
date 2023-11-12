@@ -1,7 +1,8 @@
 # Refactoring basic VAE example
 
 ### Note: 
-Example taken from `https://github.com/pytorch/examples/tree/main/vae`
+Example taken from:
+`https://github.com/pytorch/examples/tree/main/vae`
 
 This is an improved implementation of the paper [Auto-Encoding Variational Bayes](http://arxiv.org/abs/1312.6114) by Kingma and Welling.
 It uses ReLUs and the adam optimizer, instead of sigmoids and adagrad. These changes make the network converge much faster.
