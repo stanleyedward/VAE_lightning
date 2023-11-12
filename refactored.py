@@ -6,7 +6,7 @@ from torch import nn
 import pytorch_lightning as pl
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
-
+import torchvision
 #VAE architecture
 class VAE(pl.LightningModule):
     def __init__(self):
@@ -42,17 +42,23 @@ class VAE(pl.LightningModule):
 
         return BCE + KLD
 
-    def forward(self, x):
-        mu, logvar = self.encode(x.view(-1, 784))
-        z = self.reparameterize(mu, logvar)
-        return self.decode(z), mu, logvar
+    def forward(self, z):
+        # mu, logvar = self.encode(x.view(-1, 784))
+        # z = self.reparameterize(mu, logvar)
+        # return self.decode(z), mu, logvar
+        return self.decode(z)
 
     def training_step(self, batch, batch_idx):
         #data = data.to(device) #lightning manages devices directly 
         #optimizer.zero_grad() #lightning updates optimizers directly 
         x, _ = batch #will error if you dont split
-        recon_batch, mu, logvar = self(x)
-        loss = self.loss_function(recon_batch, x, mu, logvar)
+        # we move the forward() here in the training step because its actually whats ahpepening in the training step
+        mu, logvar = self.encode(x.view(-1, 784)) 
+        z = self.reparameterize(mu, logvar)
+        x_hat = self(z)
+        # return self.decode(z), mu, logvar
+        # recon_batch, mu, logvar = self(x)
+        loss = self.loss_function(x_hat, x, mu, logvar)
         #loss.backward() #lightning automates the backward prop as well
         #train_loss += loss.item() #lightning also aggregates the loss automatically like this
         #optimizer.step() #lightning updates optimizers directly 
@@ -63,17 +69,39 @@ class VAE(pl.LightningModule):
 
         x, _ = batch
         # data = data.to(device)
-        recon_batch, mu, logvar = self(x)
-        val_loss = self.loss_function(recon_batch, x, mu, logvar).item()
+        
+        # recon_batch, mu, logvar = self(x)
+        # val_loss = self.loss_function(recon_batch, x, mu, logvar).item()
+        
+        #from the updated train_step
+        mu, logvar = self.encode(x.view(-1, 784)) 
+        z = self.reparameterize(mu, logvar)
+        x_hat = self(z)
+        val_loss = self.loss_function(x_hat, x, mu, logvar)
             
-        if batch_idx == 0:
-            n = min(x.size(0), 8)
-            comparison = torch.cat([x[:n],
-                                    recon_batch.view(args.batch_size, 1, 28, 28)[:n]])
-            path = 'results/reconstruction_' + str(self.current_epoch) + '.png'
-            save_image(comparison.cpu(), path, nrow=n)
+        # if batch_idx == 0:
+        #     n = min(x.size(0), 8)
+        #     comparison = torch.cat([x[:n],
+        #                             x_hat.view(args.batch_size, 1, 28, 28)[:n]])
+        #     path = 'results/reconstruction_' + str(self.current_epoch) + '.png'
+        #     save_image(comparison.cpu(), path, nrow=n)
+        
+        #deleted since we are using logger below!
 
-        return {'val_loss': val_loss}
+        return {'val_loss': val_loss, 
+                'x_hat': x_hat}
+    
+    def on_validation_epoch_end(self, outputs): #for logging the end of every epoch and not only batch
+        
+        val_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
+        x_hat = outputs[-1]['x_hat']
+   
+        grid = torchvision.utils.make_grid(x_hat)
+        self.logger.experiment.add_image('images', grid, 0)
+        
+        log = {'avg_val_loss': val_loss}
+        return {'log': log}
+
     
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=1e-3)
